@@ -5,12 +5,10 @@ def periodogram_estimate(dft):
     return np.square(np.abs(dft)) / len(dft)
 
 def discrete_fourier_transform(frame, n_fft=512):
-    # Compute discrete fourier transform
     dft = np.zeros(n_fft).astype(complex)
     for k in range(n_fft):
         for n in range(len(frame)):
             dft[k] += frame[n] * np.exp(-2 * np.pi * 1j * k * n / len(frame))
-
     return dft
 
 # Steps at a Glance
@@ -45,7 +43,6 @@ frames = np.asarray([waveform[i*step_length : i*step_length+frame_length] for i 
 dfts = np.asarray([discrete_fourier_transform(frame, 512) for frame in frames])
 dfts = np.asarray([dft[:257] for dft in dfts])
 periodogram_estimates = np.asarray([periodogram_estimate(dft) for dft in dfts])
-x = 0
 
 # Step 3: Apply the mel filterbank to the power spectra, sum the energy in each filter.
 # Cochlea can not discern the difference between two closely spaced frequencies. This effect becomes more pronounced as the frequencies increase.
