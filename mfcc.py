@@ -1,6 +1,18 @@
 import numpy as np
 import scipy.io.wavfile as w
 
+def periodogram_estimate(dft):
+    return np.square(np.abs(dft)) / len(dft)
+
+def discrete_fourier_transform(frame, n_fft=512):
+    # Compute discrete fourier transform
+    dft = np.zeros(n_fft).astype(complex)
+    for k in range(n_fft):
+        for n in range(len(frame)):
+            dft[k] += frame[n] * np.exp(-2 * np.pi * 1j * k * n / len(frame))
+
+    return dft
+
 # Steps at a Glance
 # 1. Frame the signal into short frames.
 # 2. For each frame, calculate the periodogram estimate of the power spectrum.
@@ -13,6 +25,9 @@ import scipy.io.wavfile as w
 audio_name = '/home/alanwuha/Documents/Projects/datasets/iemocap/IEMOCAP_full_release/Session1/sentences/wav/Ses01F_impro01/Ses01F_impro01_F000.wav'
 sample_rate, waveform = w.read(audio_name)
 
+# Convert to floats by dividing 32768.0
+waveform = waveform / 32768.0
+
 # Step 1: Frame the signal into short frames.
 # Frame the signal into 20-40ms frames.
 # If the frame is much shorter, we don't have enough samples to get a reliable spectral estimate.
@@ -24,10 +39,13 @@ padding_length = frame_length if waveform.size < frame_length else (frame_length
 waveform = np.pad(waveform, (0, padding_length))
 frames = np.asarray([waveform[i*step_length : i*step_length+frame_length] for i in range(n_frames)])
 
-x = 0
 # Step 2: Calculate the power spectrum of each frame.
 # Periodogram estimate identifies the frequencies that are present in the frame.
 # This is motivated by the human cochlea which vibrates at different locations/nerves that inform the brain on the presence of certain frequencies.
+dfts = np.asarray([discrete_fourier_transform(frame, 512) for frame in frames])
+dfts = np.asarray([dft[:257] for dft in dfts])
+periodogram_estimates = np.asarray([periodogram_estimate(dft) for dft in dfts])
+x = 0
 
 # Step 3: Apply the mel filterbank to the power spectra, sum the energy in each filter.
 # Cochlea can not discern the difference between two closely spaced frequencies. This effect becomes more pronounced as the frequencies increase.
