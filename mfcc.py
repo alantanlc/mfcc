@@ -1,6 +1,5 @@
-import torchaudio
-import torch.nn.functional as F
-import math
+import numpy as np
+import scipy.io.wavfile as w
 
 # Steps at a Glance
 # 1. Frame the signal into short frames.
@@ -12,18 +11,20 @@ import math
 
 # Load waveform
 audio_name = '/home/alanwuha/Documents/Projects/datasets/iemocap/IEMOCAP_full_release/Session1/sentences/wav/Ses01F_impro01/Ses01F_impro01_F000.wav'
-waveform, sample_rate = torchaudio.load(audio_name)
+sample_rate, waveform = w.read(audio_name)
 
 # Step 1: Frame the signal into short frames.
 # Frame the signal into 20-40ms frames.
 # If the frame is much shorter, we don't have enough samples to get a reliable spectral estimate.
 # If the frame is longer, the signal changes too much throughout the frame.
-frame_length = 0.025 * sample_rate
-step_length = 0.01 * sample_rate
-n_frames = math.ceil((waveform.shape[0] - frame_length) / step_length) + 1
-padding_length = int(frame_length + (n_frames - 1) * step_length - waveform.shape[0])
-waveform = F.pad(waveform, pad=(0, padding_length))
+frame_length = np.int(0.025 * sample_rate)
+step_length = np.int(0.01 * sample_rate)
+n_frames = np.int(np.ceil((waveform.size - frame_length) / step_length) + 1)
+padding_length = frame_length if waveform.size < frame_length else (frame_length + (n_frames - 1) * step_length - waveform.size)
+waveform = np.pad(waveform, (0, padding_length))
+frames = np.asarray([waveform[i*step_length : i*step_length+frame_length] for i in range(n_frames)])
 
+x = 0
 # Step 2: Calculate the power spectrum of each frame.
 # Periodogram estimate identifies the frequencies that are present in the frame.
 # This is motivated by the human cochlea which vibrates at different locations/nerves that inform the brain on the presence of certain frequencies.
