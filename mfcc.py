@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.io.wavfile as w
+import matplotlib.pyplot as plt
 import cmath
 
 def periodogram_estimate(dft):
@@ -23,6 +24,39 @@ def mel_scale_to_freq(mel):
 
 def freq_to_nearest_fft_bin(freq, n_fft, sample_rate):
     return np.floor((n_fft + 1) * freq / sample_rate)
+
+def get_mel_filterbanks(f, n_fft):
+    n_filters = len(f) - 2
+    n_coefficients = np.int(n_fft / 2 + 1)
+    h = np.zeros((n_filters, n_coefficients))
+    for m in range(0, n_filters):
+        for k in range(n_coefficients):
+            if k < f[m - 1 + 1]:
+                h[m, k] = 0
+            elif f[m - 1 + 1] <= k and k <= f[m + 1]:
+                h[m, k] = (k - f[m - 1 + 1]) / (f[m + 1] - f[m - 1 + 1])
+            elif f[m + 1] <= k and k <= f[m + 1 + 1]:
+                h[m, k] = (f[m + 1 + 1] - k) / (f[m + 1 + 1] - f[m + 1])
+            elif k > f[m + 1 + 1]:
+                h[m, k] = 0
+    return h
+
+def bin2freq(bin):
+    return 16000 * bin / 512
+
+def freq2bin(freq):
+    return np.floor((512 + 1) * freq / 16000)
+
+def plot_filterbanks(filterbanks_bin, lower_freq, upper_freq, sample_rate, n_fft):
+    fig, ax = plt.subplots()
+    for filter in filterbanks_bin:
+        plt.plot(filter)
+    plt.margins(0, 0)
+    plt.title('The ' + str(filterbanks_bin.shape[0]) + '-filter Mel Filterbank')
+    plt.xlabel('frequency (Hz)')
+    plt.ylabel('amplitude')
+    ax.secondary_xaxis('top', functions=(bin2freq, freq2bin))
+    plt.show()
 
 def compute_dft_complex(frame, n_fft=512):
     output = []
@@ -64,9 +98,10 @@ frames = np.asarray([waveform[i*step_length : i*step_length+frame_length] for i 
 # Step 2: Calculate the power spectrum of each frame.
 # Take the absolute value of the complex fourier transform, and square the result.
 # We would generally perform a 512 point FFT and keep only the first 257 coefficients.
-dfts = np.asarray([discrete_fourier_transform(frame, 512) for frame in frames])
-dfts_257 = np.asarray([dft[:257] for dft in dfts])
-periodogram_estimates = np.asarray([periodogram_estimate(dft) for dft in dfts_257])
+n_fft = 512
+# dfts = np.asarray([discrete_fourier_transform(frame, n_fft) for frame in frames])
+# dfts_257 = np.asarray([dft[:257] for dft in dfts])
+# periodogram_estimates = np.asarray([periodogram_estimate(dft) for dft in dfts_257])
 
 # Step 3: Compute the Mel-spaced filterbank.
 # This is a set of 20-40 (26 is standard) triangular filters that we apply to the periodogram power spectral estimate from step 2. Our filterbank comes in the form of 26 vectors of length 257.
@@ -75,11 +110,11 @@ periodogram_estimates = np.asarray([periodogram_estimate(dft) for dft in dfts_25
 # Once this is performed, we are left with 26 numbers that give us an indication of how much energy was in each filterbank.
 lower_freq, upper_freq = 300, 8000
 lower_mel_scale, upper_mel_scale = freq_to_mel_scale(lower_freq), freq_to_mel_scale(upper_freq)
-mel_filterbanks = np.linspace(lower_mel_scale, upper_mel_scale, num=12)
-freq_filterbanks = np.asarray([mel_scale_to_freq(mel) for mel in mel_filterbanks])
-fft_bins = np.asarray([freq_to_nearest_fft_bin(freq, 512, sample_rate) for freq in freq_filterbanks])
-
-x = 0
+mel_filterbank_points = np.linspace(lower_mel_scale, upper_mel_scale, num=12)
+freq_filterbank_points= np.asarray([mel_scale_to_freq(mel) for mel in mel_filterbank_points])
+bin_filterbank_points = np.asarray([freq_to_nearest_fft_bin(freq, n_fft, sample_rate) for freq in freq_filterbank_points])
+filterbanks_bin = get_mel_filterbanks(bin_filterbank_points, n_fft)
+plot_filterbanks(filterbanks_bin, lower_freq, upper_freq, sample_rate, n_fft)
 
 # Step 4: Take the logarithm of all filterbank energies.
 # Humans don't hear loudness on a linear scale. Generally, we need to put 8 times as much energy to double the perceived volume of a sound.
