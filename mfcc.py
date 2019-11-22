@@ -108,8 +108,7 @@ frames = np.asarray([waveform[i*step_length : i*step_length+frame_length] for i 
 # Take the absolute value of the complex fourier transform, and square the result.
 # We would generally perform a 512 point FFT and keep only the first 257 coefficients.
 n_fft = 512
-# dfts = np.asarray([discrete_fourier_transform(frame, n_fft) for frame in frames])
-# dfts_257 = np.resize(dfts, (dfts.shape[0], 257))
+# dfts = np.asarray([discrete_fourier_transform(frame, n_fft) for frame in frames])[:,:257]
 dfts = np.fft.rfft(frames, n_fft)
 periodogram_estimates = np.square(np.absolute(dfts)) / n_fft
 periodogram_estimates = np.where(periodogram_estimates == 0, np.finfo(float).eps, periodogram_estimates)
