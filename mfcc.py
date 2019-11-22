@@ -2,6 +2,7 @@ import numpy as np
 import scipy.io.wavfile as w
 import matplotlib.pyplot as plt
 import cmath
+from scipy.fftpack import dct
 
 def periodogram_estimate(dft):
     return np.square(np.abs(dft)) / len(dft)
@@ -41,18 +42,26 @@ def get_mel_filterbanks(f, n_fft):
                 h[m, k] = 0
     return h
 
+def compute_filterbank_energies(estimate, mel_filterbanks):
+    energies = np.zeros(len(mel_filterbanks))
+
+    for i, filter in enumerate(mel_filterbanks):
+        energies[i] = np.sum(filter * estimate)
+
+    return energies
+
 def bin2freq(bin):
     return 16000 * bin / 512
 
 def freq2bin(freq):
     return np.floor((512 + 1) * freq / 16000)
 
-def plot_filterbanks(filterbanks_bin, lower_freq, upper_freq, sample_rate, n_fft):
+def plot_filterbanks(mel_filterbanks):
     fig, ax = plt.subplots()
-    for filter in filterbanks_bin:
+    for filter in mel_filterbanks:
         plt.plot(filter)
     plt.margins(0, 0)
-    plt.title('The ' + str(filterbanks_bin.shape[0]) + '-filter Mel Filterbank')
+    plt.title('The ' + str(mel_filterbanks.shape[0]) + '-filter Mel Filterbank')
     plt.xlabel('frequency (Hz)')
     plt.ylabel('amplitude')
     ax.secondary_xaxis('top', functions=(bin2freq, freq2bin))
@@ -81,7 +90,7 @@ audio_name = '/home/alanwuha/Documents/Projects/datasets/iemocap/IEMOCAP_full_re
 sample_rate, waveform = w.read(audio_name)
 
 # Convert to floats by dividing 32768.0
-waveform = waveform / 32768.0
+# waveform = waveform / 32768.0
 
 # Step 1: Frame the signal into 20-40ms frames. 25ms is standard.
 # This means the frame length for a 16kHz signal is 0.025 * 16000 = 400 samples.
@@ -100,28 +109,37 @@ frames = np.asarray([waveform[i*step_length : i*step_length+frame_length] for i 
 # We would generally perform a 512 point FFT and keep only the first 257 coefficients.
 n_fft = 512
 # dfts = np.asarray([discrete_fourier_transform(frame, n_fft) for frame in frames])
-# dfts_257 = np.asarray([dft[:257] for dft in dfts])
-# periodogram_estimates = np.asarray([periodogram_estimate(dft) for dft in dfts_257])
+# dfts_257 = np.resize(dfts, (dfts.shape[0], 257))
+dfts = np.fft.rfft(frames, n_fft)
+periodogram_estimates = np.square(np.absolute(dfts)) / n_fft
+periodogram_estimates = np.where(periodogram_estimates == 0, np.finfo(float).eps, periodogram_estimates)
 
 # Step 3: Compute the Mel-spaced filterbank.
 # This is a set of 20-40 (26 is standard) triangular filters that we apply to the periodogram power spectral estimate from step 2. Our filterbank comes in the form of 26 vectors of length 257.
 # Each vector is mostly zeros, but is non-zero for a certain section of the spectrum.
 # To calculate filterbank energies we multiply each filterbank with the power spectrum, then add up the coefficients.
 # Once this is performed, we are left with 26 numbers that give us an indication of how much energy was in each filterbank.
-lower_freq, upper_freq = 300, 8000
+n_coefficients = 26
+lower_freq, upper_freq = 0, 8000
 lower_mel_scale, upper_mel_scale = freq_to_mel_scale(lower_freq), freq_to_mel_scale(upper_freq)
-mel_filterbank_points = np.linspace(lower_mel_scale, upper_mel_scale, num=12)
-freq_filterbank_points= np.asarray([mel_scale_to_freq(mel) for mel in mel_filterbank_points])
-bin_filterbank_points = np.asarray([freq_to_nearest_fft_bin(freq, n_fft, sample_rate) for freq in freq_filterbank_points])
-filterbanks_bin = get_mel_filterbanks(bin_filterbank_points, n_fft)
-plot_filterbanks(filterbanks_bin, lower_freq, upper_freq, sample_rate, n_fft)
+mel_filterbank_points = np.linspace(lower_mel_scale, upper_mel_scale, num=n_coefficients + 2)
+freq_filterbank_points = 700 * (np.exp(mel_filterbank_points / 1125) - 1)
+bin_filterbank_points = np.floor((n_fft + 1) * freq_filterbank_points / sample_rate)
+mel_filterbanks = get_mel_filterbanks(bin_filterbank_points, n_fft)
+# plot_filterbanks(mel_filterbanks)
+filterbank_energies = np.dot(periodogram_estimates, mel_filterbanks.T)
+filterbank_energies = np.where(filterbank_energies == 0, np.finfo(float).eps, filterbank_energies)
 
 # Step 4: Take the logarithm of all filterbank energies.
 # Humans don't hear loudness on a linear scale. Generally, we need to put 8 times as much energy to double the perceived volume of a sound.
 # This compression operation makes our features match more closely to what humans actually hear.
 # Logarithm allows us to use cepstral mean subtraction, which is a channel normalisation technique.
+log_filterbank_energies = np.log(filterbank_energies)
 
 # Step 5: Compute the DCT of the log filterbank energies.
 # Because our filterbanks are all overlapping, the filterbank energies are quite correlated with each other.
 # DCT decorrelates the energies which means diagonal covarience matrices can be used to model the features in e.g. a HMM classifier.
 # Only 12 of the 26 DCT coefficients are kept because the higher DCT coefficients represent fast changes in the filterbank energies and it turns out that these fast changes actually degrade ASR performance, so we get a small improvement by dropping them.
+dct_log_filterbank_energies = dct(log_filterbank_energies, type=2, axis=1, norm='ortho')[:,:13]
+
+print('End of program')
